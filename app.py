@@ -9,24 +9,36 @@ st.set_page_config(page_title="台股 AI 智慧分析系統", layout="wide")
 
 st.title("📈 台股 AI 智慧分析與決策系統")
 
-# 側邊欄：自選股管理 (加入表單與按鈕，解決無法輸入/沒反應的問題)
+# 側邊欄：自選股管理
 st.sidebar.header("📌 自選股管理")
-st.sidebar.markdown("💡 **提示**：上市股票請加 `.TW`，上櫃股票請加 `.TWO`")
 
-# 建立一個表單，使用者必須點擊按鈕才會送出資料
-with st.sidebar.form(key='stock_search_form'):
-    stock_input = st.text_input("輸入股票代碼 (例: 2330.TW)", "2330.TW")
-    submit_button = st.form_submit_button(label="🔍 搜尋 / 載入線圖")
+# 改良1：只需要輸入數字，使用 .strip() 自動清除多餘空白
+stock_input = st.sidebar.text_input("輸入股票代碼 (例: 2330)", "2330").strip()
 
-# 當按下按鈕，或是表單內有預設值時執行
-if submit_button or stock_input:
-    st.subheader(f"📊 {stock_input} 技術線圖與籌碼分析")
+# 改良2：用最單純的按鈕觸發更新，避免表單鎖死問題
+update_btn = st.sidebar.button("🔍 搜尋 / 載入線圖")
+
+if stock_input:
+    st.subheader(f"📊 {stock_input} 技術線圖與資料")
     
-    # 抓取股票資料
-    df = yf.download(stock_input, period="6m")
+    # 加上讀取動畫，讓你知道系統有在做事
+    with st.spinner("資料抓取中，請稍候..."):
+        # 邏輯：先嘗試抓取上市 (.TW) 資料
+        test_ticker_tw = f"{stock_input}.TW"
+        df = yf.download(test_ticker_tw, period="6m")
+        actual_ticker = test_ticker_tw
+        
+        # 如果上市抓不到，自動嘗試抓取上櫃 (.TWO) 資料
+        if df is None or df.empty:
+            test_ticker_two = f"{stock_input}.TWO"
+            df = yf.download(test_ticker_two, period="6m")
+            actual_ticker = test_ticker_two
     
-    # 判斷資料是否為空
+    # 判斷最終是否成功抓到資料
     if df is not None and not df.empty:
+        st.success(f"成功載入資料！系統自動判定為：{actual_ticker}")
+        
+        # 繪製 K 線圖
         fig = go.Figure(data=[go.Candlestick(
             x=df.index,
             open=df['Open'].squeeze(),
@@ -38,7 +50,7 @@ if submit_button or stock_input:
         fig.update_layout(title="近半年 K 線圖", xaxis_rangeslider_visible=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.error("查無此股票資料，請確認代碼是否正確（上市請加上 .TW，上櫃請加上 .TWO）。")
+        st.error("查無此股票資料，請確認你輸入的數字代碼是否正確。")
 
 st.divider()
 
