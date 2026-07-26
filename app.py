@@ -9,12 +9,19 @@ st.set_page_config(page_title="台股 AI 智慧分析系統", layout="wide")
 st.title("📈 台股 AI 智慧分析與決策系統")
 
 # ==========================================
+# 0. 建立偽裝 Session，突破 Yahoo 的 IP 封鎖
+# ==========================================
+yf_session = requests.Session()
+yf_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
+
+# ==========================================
 # 1. 建立名稱轉代碼的超高速搜尋函數
 # ==========================================
 def search_stock(query):
-    """透過 API 將中文名稱或數字轉換為正確的股票代碼"""
     url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
     try:
         response = requests.get(url, headers=headers, timeout=5)
         data = response.json()
@@ -45,7 +52,7 @@ if st.sidebar.button("🔍 搜尋 / 載入線圖"):
 stock_query = st.session_state.target_stock
 
 # ==========================================
-# 3. 抓取資料與視覺化呈現 (修正 yfinance 引擎)
+# 3. 抓取資料與視覺化呈現 (搭配偽裝 Session)
 # ==========================================
 st.subheader(f"📊 「{stock_query}」搜尋結果與分析")
 
@@ -59,12 +66,11 @@ if stock_query:
             st.success(f"定位成功！系統對應目標為：**{stock_name} ({symbol})**")
             
             try:
-                # 【關鍵修正】：改用 yf.Ticker().history()，這比 yf.download() 穩定非常多
-                stock_target = yf.Ticker(symbol)
+                # 【關鍵修正】：將偽裝的 yf_session 傳入 yfinance 中
+                stock_target = yf.Ticker(symbol, session=yf_session)
                 df = stock_target.history(period="6m")
                 
                 if df is not None and not df.empty:
-                    # 繪製 K 線圖 (history 回傳格式乾淨，不需要 squeeze())
                     fig = go.Figure(data=[go.Candlestick(
                         x=df.index,
                         open=df['Open'],
@@ -93,7 +99,7 @@ if stock_query:
                         st.markdown("<span style='background-color:red;color:yellow;padding:2px 5px;'>安全係數計算中... (建議買進區間)</span>", unsafe_allow_html=True)
                         st.markdown("<span style='background-color:black;color:white;padding:2px 5px;'>危險係數計算中... (建議賣出區間)</span>", unsafe_allow_html=True)
                 else:
-                    st.error("此股票目前無近半年的交易資料，可能是代碼錯誤或剛上市。")
+                    st.error("伺服器連線遭拒或目前無資料，請稍後重試。")
             except Exception as e:
                 st.error(f"下載線圖資料時發生錯誤：{e}")
         else:
