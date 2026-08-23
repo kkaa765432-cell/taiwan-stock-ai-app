@@ -1,0 +1,27 @@
+name: Daily Stock Analysis Automation
+
+on:
+  schedule:
+    # 台灣時間每日 17:30 (即 UTC 時間 09:30)，週一至週五執行
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch: # 支援手動按鈕觸發測試
+
+jobs:
+  run-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 檢出專案程式碼
+        uses: actions/checkout@v3
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 安裝所需套件
+        run: pip install -r requirements.txt
+
+      - name: 執行自動化排程分析
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python app.py || true
