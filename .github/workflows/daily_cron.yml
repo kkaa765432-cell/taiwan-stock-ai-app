@@ -1,0 +1,25 @@
+name: Daily Stock Analysis Cron
+
+on:
+  schedule:
+    # 台灣時間 17:30 等於 UTC 時間 09:30
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch: # 支援手動觸發
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Daily Analysis Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python fetch_and_analyze.py
