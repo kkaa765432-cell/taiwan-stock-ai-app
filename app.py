@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import yfinance as yf
 from supabase import create_client
 import google.generativeai as genai
+import re
 
 # 設定頁面標題與佈局
 st.set_page_config(page_title="台股 AI 自動分析決策系統", layout="wide")
@@ -18,7 +19,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABAS
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# 常用股票名稱對應表 (擴充輸入中文時自動換算代碼)
+# 常用股票中文名稱對應表
 STOCK_NAME_TO_CODE = {
     "德微": "3675",
     "和碩": "4938",
@@ -28,6 +29,18 @@ STOCK_NAME_TO_CODE = {
     "廣達": "2382",
     "緯創": "3231",
 }
+
+def extract_stock_code(input_str):
+    """ 從輸入字串自動過濾出純數字股票代碼 """
+    input_str = str(input_str).strip()
+    # 先查對照表
+    if input_str in STOCK_NAME_TO_CODE:
+        return STOCK_NAME_TO_CODE[input_str]
+    # 使用正則表達式擷取數字
+    digits = re.findall(r'\d+', input_str)
+    if digits:
+        return digits[0]
+    return input_str
 
 st.title("📈 台股 AI 智慧分析與籌碼決策系統")
 
@@ -41,8 +54,7 @@ new_stock_input = st.sidebar.text_input("輸入股票代碼或名稱 (如: 3675 
 
 if st.sidebar.button("新增自選股"):
     if new_stock_input:
-        # 轉換中文名為代碼
-        stock_code = STOCK_NAME_TO_CODE.get(new_stock_input, new_stock_input)
+        stock_code = extract_stock_code(new_stock_input)
         if supabase:
             supabase.table("user_stocks").upsert({
                 "stock_id": stock_code, 
@@ -80,14 +92,15 @@ with tab1:
         except Exception:
             today_analysis = []
             
-    analysis_dict = {item["stock_id"]: item for item in today_analysis} if today_analysis else {}
+    analysis_dict = {str(item["stock_id"]): item for item in today_analysis} if today_analysis else {}
 
     # 顯示自選股按鈕 (每行最多 5 個)
     MAX_COLS = 5
     cols = st.columns(min(len(user_stocks), MAX_COLS))
 
     for idx, s in enumerate(user_stocks):
-        sid = s["stock_id"]
+        raw_sid = str(s["stock_id"])
+        sid = extract_stock_code(raw_sid)
         s_name = s.get("stock_name", sid)
         s_data = analysis_dict.get(sid, {})
         signal = s_data.get("signal", "觀望")
@@ -106,17 +119,16 @@ with tab1:
             st.session_state["selected_stock"] = sid
 
     selected_raw = st.session_state["selected_stock"]
-    # 取得標準代碼 (如: 輸入「德微」轉成「3675」)
-    selected_code = STOCK_NAME_TO_CODE.get(selected_raw, selected_raw)
+    selected_code = extract_stock_code(selected_raw)
 
     st.markdown("---")
     
     if selected_code:
         st.header(f"🔍 股票分析：{selected_raw} ({selected_code})")
         
-        # 抓取技術線圖資料 (依次嘗試 上櫃 .TWO 與 上市 .TW)
+        # 雙重下載嘗試：先試 .TW 再試 .TWO (yfinance 台股抓取備援)
         df = pd.DataFrame()
-        for suffix in [".TWO", ".TW"]:
+        for suffix in [".TW", ".TWO"]:
             ticker = f"{selected_code}{suffix}"
             data = yf.download(ticker, period="6m", progress=False)
             if not data.empty:
@@ -124,7 +136,7 @@ with tab1:
                 break
             
         if not df.empty:
-            # 處理 MultiIndex 欄位 (yfinance 新版回傳格式變更)
+            # 處理 MultiIndex 欄位結構問題
             if isinstance(df.columns, pd.MultiIndex):
                 open_price = df['Open'].iloc[:, 0]
                 high_price = df['High'].iloc[:, 0]
@@ -136,12 +148,12 @@ with tab1:
                 low_price = df['Low']
                 close_price = df['Close']
 
-            # 顯示最後交易日與價格
+            # 抓取最新一個交易日數據
             last_date = df.index[-1].strftime('%Y-%m-%d')
-            last_close = close_price.iloc[-1]
-            last_open = open_price.iloc[-1]
-            last_high = high_price.iloc[-1]
-            last_low = low_price.iloc[-1]
+            last_close = float(close_price.iloc[-1])
+            last_open = float(open_price.iloc[-1])
+            last_high = float(high_price.iloc[-1])
+            last_low = float(low_price.iloc[-1])
 
             st.success(
                 f"📅 **最後交易日**：{last_date} ｜ "
@@ -168,9 +180,9 @@ with tab1:
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning(f"⚠️ 查無 {selected_raw} ({selected_code}) 的股價歷史資料，請確認代碼或名稱是否正確。")
+            st.error(f"❌ 查無 {selected_raw} ({selected_code}) 的股價歷史資料，請確認代碼是否正確。")
             
-        # 呈現 Supabase 分析結果，若無資料則現場調用 Gemini 備援
+        # 呈現分析結果
         res_data = analysis_dict.get(selected_code, {})
         if res_data:
             conf = res_data.get("confidence", 95)
@@ -191,9 +203,8 @@ with tab1:
             st.info("ℹ️ 資料庫尚無該股票今日之預算分析，啟動 Gemini AI 即時備援分析：")
             
             if GEMINI_API_KEY and not df.empty:
-                with st.spinner("🤖 正在根據最後交易資料生成 AI 分析，請稍候..."):
+                with st.spinner("🤖 正在調用 Gemini AI 即時分析最後交易資料中..."):
                     try:
-                        # 取最近 5 個交易日資料
                         recent_df = df.tail(5)
                         summary_str = f"最後交易日: {last_date}, 最新收盤價: {last_close:.2f}\n近五日走勢:\n{recent_df[['Open', 'High', 'Low', 'Close']].to_string()}"
                         
@@ -206,7 +217,7 @@ with tab1:
                     except Exception as e:
                         st.error(f"即時 AI 分析失敗：{e}")
             elif not GEMINI_API_KEY:
-                st.warning("未設定 GEMINI_API_KEY，無法提供即時 AI 備援分析。")
+                st.warning("請先設定 Secrets 中的 GEMINI_API_KEY 以開啟即時 AI 分析。")
 
 with tab2:
     st.subheader("🚀 每日完成整理準備起漲推薦股 (信心度 > 95%)")
