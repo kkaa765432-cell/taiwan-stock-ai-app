@@ -1,6 +1,6 @@
 streamlit
-yfinance
-google-generativeai
 pandas
 plotly
-requests
+yfinance
+supabase
+google-generativeai
