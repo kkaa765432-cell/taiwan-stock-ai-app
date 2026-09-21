@@ -18,7 +18,7 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# 內建常見台股中文名稱資料庫 (可隨意擴充)
+# 內建常見台股中文名稱資料庫
 STOCK_DICT = {
     "4938": ("和碩", "上市"),
     "3675": ("德微", "上櫃"),
@@ -54,6 +54,20 @@ def resolve_stock_input(user_input):
         return f"{stock_code}.TW", f"股票 {stock_code}", stock_code, "上市"
         
     return f"{user_input}.TW", user_input, user_input, "上市"
+
+def get_gemini_response(prompt_text):
+    """具備模型自動備援機制的呼叫函式 (正確縮排版)"""
+    candidate_models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash']
+    
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt_text)
+            return response.text
+        except Exception:
+            continue
+            
+    raise Exception("無法連接至任何可用的 Gemini 模型，請檢查 API Key 是否啟用。")
 
 st.title("📈 台股 AI 自動分析決策系統")
 st.caption("每日 17:30 自動更新盤後籌碼、技術面與新聞 | 綜合信心指數分析")
@@ -163,24 +177,9 @@ if selected_stock_info:
     except Exception as e:
         st.error(f"下載技術線圖時發生錯誤: {e}")
 
-    # 2. 呼叫 Gemini AI 生成完整報告
+    # 2. 呼叫 Gemini AI 生成完整報告 (使用自動備援函式)
     with st.spinner(f"啟動 Gemini AI 即時備援分析 {name} ({code})..."):
         try:
-            def get_gemini_response(prompt_text):
-    """具備模型自動備援機制的呼叫函式"""
-    # 依序嘗試最新模型名稱
-    candidate_models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash']
-    
-    for model_name in candidate_models:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt_text)
-            return response.text
-        except Exception:
-            continue
-            
-    raise Exception("無法連接至任何可用的 Gemini 模型，請檢查 API Key 是否啟用。")
-            
             prompt = f"""
             你是一位專業的台股投資分析師。請針對台股股票：【{name} ({code})】寫一份極詳細且專業的分析報告。
 
@@ -206,7 +205,7 @@ if selected_stock_info:
             - 策略三：關鍵籌碼觀察指標。
             """
             
-            response = model.generate_content(prompt)
+            analysis_result = get_gemini_response(prompt)
             
             st.markdown("### 📋 【分析說明】")
             
@@ -217,7 +216,7 @@ if selected_stock_info:
             </div>
             """, unsafe_allow_html=True)
             
-            st.markdown(response.text)
+            st.markdown(analysis_result)
             
         except Exception as e:
             st.error(f"❌ 呼叫 Gemini AI 分析時發生錯誤: {e}")
@@ -240,8 +239,7 @@ if user_prompt := st.chat_input("詢問關於台股、籌碼面、新聞或操�
 
     with st.chat_message("assistant"):
         try:
-            chat_model = genai.GenerativeModel('gemini-1.5-flash')
-            bot_reply = chat_model.generate_content(user_prompt).text
+            bot_reply = get_gemini_response(user_prompt)
             st.markdown(bot_reply)
             st.session_state.messages.append({"role": "assistant", "content": bot_reply})
         except Exception as e:
