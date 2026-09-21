@@ -166,7 +166,20 @@ if selected_stock_info:
     # 2. 呼叫 Gemini AI 生成完整報告
     with st.spinner(f"啟動 Gemini AI 即時備援分析 {name} ({code})..."):
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            def get_gemini_response(prompt_text):
+    """具備模型自動備援機制的呼叫函式"""
+    # 依序嘗試最新模型名稱
+    candidate_models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash']
+    
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt_text)
+            return response.text
+        except Exception:
+            continue
+            
+    raise Exception("無法連接至任何可用的 Gemini 模型，請檢查 API Key 是否啟用。")
             
             prompt = f"""
             你是一位專業的台股投資分析師。請針對台股股票：【{name} ({code})】寫一份極詳細且專業的分析報告。
