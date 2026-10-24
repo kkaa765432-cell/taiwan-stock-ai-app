@@ -167,7 +167,7 @@ with tab1:
             badge = " 🔴 [買]" if sig == "買" else (" ⬛ [賣]" if sig == "賣" else "")
             if cols[idx].button(sname + " (" + sid + ")" + badge, key="tab1_btn_" + sid):
                 st.session_state["selected_stock"] = sid
-selected_code = extract_stock_code(st.session_state["selected_stock"])
+                selected_code = extract_stock_code(st.session_state["selected_stock"])
     display_name = get_stock_name(selected_code)
 
     st.markdown("---")
@@ -224,3 +224,4 @@ with tab3:
                     st.write(response.text)
                 except Exception as e:
                     st.error(f"錯誤: {e}")
+
