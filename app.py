@@ -53,7 +53,7 @@ def get_stock_name(code):
 @st.cache_data(ttl=1800)
 def fetch_stock_data(stock_code):
     for suffix in [".TW", ".TWO"]:
-        ticker = f"{stock_code}{suffix}"
+        ticker = stock_code + suffix
         try:
             df = yf.download(ticker, period="6m", progress=False)
             if not df.empty and len(df) > 0:
@@ -68,15 +68,33 @@ def fetch_stock_data(stock_code):
 def run_gemini_analysis(stock_name, stock_code, recent_df_str):
     if not GEMINI_API_KEY:
         return "⚠️ 未設定 GEMINI_API_KEY", {}
-    prompt = f"""
-你是一位專業台股分析師。請針對『{stock_name} ({stock_code})』撰寫深度分析報告。
-【近十日歷史價格】:
-{recent_df_str}
-請包含：法人外資買賣、技術面壓力支撐、營運展望、未來操作策略。
-結尾請附上嚴格的 JSON 區塊：
-```json
-{{"confidence": 96, "signal": "買", "buy_range": "85.0 ~ 87.0元", "sell_range": "90.0 ~ 91.0元"}}
-    # 3. 側邊欄自選股管理
+    
+    # 改用標準字串相加，避免大括號衝突
+    prompt = (
+        "你是一位專業台股分析師。請針對『" + stock_name + " (" + stock_code + ")』撰寫深度分析報告。\n"
+        "【近十日歷史價格】:\n" + recent_df_str + "\n\n"
+        "請包含：法人外資買賣、技術面壓力支撐、營運展望、未來操作策略。\n"
+        "結尾請附上嚴格的 JSON 區塊：\n"
+        "```json\n"
+        '{"confidence": 96, "signal": "買", "buy_range": "85.0 ~ 87.0元", "sell_range": "90.0 ~ 91.0元"}\n'
+        "```"
+    )
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        res = model.generate_content(prompt)
+        text = res.text
+        j_dict = {}
+        m = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
+        if m:
+            try:
+                j_dict = json.loads(m.group(1))
+            except Exception:
+                pass
+        return text, j_dict
+    except Exception as e:
+        return "AI 呼叫失敗: " + str(e), {}
+
+# 3. 側邊欄自選股管理
 st.sidebar.title("📌 自選股管理")
 new_stock_input = st.sidebar.text_input("輸入股票代碼或名稱 (如: 3675 或 德微)", "").strip()
 
@@ -87,10 +105,10 @@ if st.sidebar.button("➕ 新增自選股"):
         if supabase:
             try:
                 supabase.table("user_stocks").upsert({"stock_id": s_code, "stock_name": s_name}).execute()
-                st.sidebar.success(f"已新增 {s_name} ({s_code})")
+                st.sidebar.success("已新增 " + s_name + " (" + s_code + ")")
                 st.rerun()
             except Exception as e:
-                st.sidebar.error(f"新增失敗: {e}")
+                st.sidebar.error("新增失敗: " + str(e))
 
 user_stocks = []
 if supabase:
@@ -109,15 +127,15 @@ for s in user_stocks:
     sid = str(s["stock_id"])
     sname = s.get("stock_name", get_stock_name(sid))
     c1, c2 = st.sidebar.columns([3, 1])
-    c1.write(f"• {sname} ({sid})")
-    if c2.button("刪除", key=f"del_btn_{sid}"):
+    c1.write("• " + sname + " (" + sid + ")")
+    if c2.button("刪除", key="del_btn_" + sid):
         if supabase:
             try:
                 supabase.table("user_stocks").delete().eq("stock_id", sid).execute()
-                st.sidebar.success(f"已刪除 {sname}")
+                st.sidebar.success("已刪除 " + sname)
                 st.rerun()
             except Exception as e:
-                st.sidebar.error(f"刪除失敗: {e}")
+                st.sidebar.error("刪除失敗: " + str(e))
 
 # 4. 主頁面與分頁初始化
 st.title("📈 台股 AI 智慧分析與籌碼決策系統")
@@ -147,7 +165,7 @@ with tab1:
             sname = s.get("stock_name", get_stock_name(sid))
             sig = analysis_dict.get(sid, {}).get("signal", "")
             badge = " 🔴 [買]" if sig == "買" else (" ⬛ [賣]" if sig == "賣" else "")
-            if cols[idx].button(f"{sname} ({sid}){badge}", key=f"tab1_btn_{sid}"):
+            if cols[idx].button(sname + " (" + sid + ")" + badge, key="tab1_btn_" + sid):
                 st.session_state["selected_stock"] = sid
 selected_code = extract_stock_code(st.session_state["selected_stock"])
     display_name = get_stock_name(selected_code)
