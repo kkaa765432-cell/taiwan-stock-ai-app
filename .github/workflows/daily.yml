@@ -25,8 +25,8 @@ jobs:
 
       - name: 執行台股 AI 盤後分析腳本
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_URL: ${{ https://cbmcyytotffgadoyajcv.supabase.co }}
+          SUPABASE_KEY: ${{ sb_publishable_wUUVVdZj4DCZeqXTOscLTg_v_sQxBi8 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python main/app.py
