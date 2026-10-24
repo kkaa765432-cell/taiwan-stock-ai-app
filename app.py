@@ -1,4 +1,4 @@
-import pandas as pd
+from datetime import datetime, timezone
 import os
 import requests
 from datetime import datetime
@@ -60,7 +60,7 @@ def save_analysis_to_supabase(symbol, analysis_text):
         "buy_range": "85.0 ~ 87.0 元",
         "sell_range": "90.0 ~ 91.0 元",
         "analysis_text": analysis_text,
-        "updated_at": datetime.utcnow.isoformat()
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
     # Supabase upsert
