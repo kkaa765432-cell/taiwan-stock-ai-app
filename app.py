@@ -171,41 +171,44 @@ with tab1:
     display_name = get_stock_name(selected_code)
 
     st.markdown("---")
-    st.header(f"🔍 股票分析：{display_name} ({selected_code})")
+    st.header("🔍 股票分析：" + display_name + " (" + selected_code + ")")
 
     df, market_type = fetch_stock_data(selected_code)
 
     if not df.empty:
         last_date = df.index[-1].strftime('%Y-%m-%d')
         last_close = float(df['Close'].iloc[-1])
-        st.success(f"📅 **最後交易日**：{last_date} ｜ **市場**：{market_type} ｜ **收盤價**：{last_close:.2f} 元")
+        st.success("📅 **最後交易日**：" + last_date + " ｜ **市場**：" + market_type + " ｜ **收盤價**：" + f"{last_close:.2f}" + " 元")
 
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
         colors = ['red' if c >= o else 'green' for c, o in zip(df['Close'], df['Open'])]
         fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color=colors), row=2, col=1)
-        fig.update_layout(title=f"{display_name} ({selected_code}) 近 6 個月技術線圖", yaxis_title="股價", yaxis2_title="成交量", xaxis_rangeslider_visible=False, template="plotly_white", height=500)
+        fig.update_layout(title=display_name + " (" + selected_code + ") 近 6 個月技術線圖", yaxis_title="股價", yaxis2_title="成交量", xaxis_rangeslider_visible=False, template="plotly_white", height=500)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.error(f"❌ 查無 {display_name} ({selected_code}) 的歷史資料。")
+        st.error("❌ 查無 " + display_name + " (" + selected_code + ") 的歷史資料。")
 
     res_data = analysis_dict.get(selected_code, {})
     if res_data:
         conf = res_data.get("confidence", 95)
         sig = res_data.get("signal", "觀望")
-        st.markdown(f"### 信心指數：<span class='badge-confidence'>{conf}%</span>", unsafe_html=True)
-        if sig == "買": st.markdown(f"#### 建議買進區間：<span class='badge-buy'>{res_data.get('buy_range')}</span>", unsafe_html=True)
-        elif sig == "賣": st.markdown(f"#### 建議賣出區間：<span class='badge-sell'>{res_data.get('sell_range')}</span>", unsafe_html=True)
+        st.markdown("### 信心指數：<span class='badge-confidence'>" + str(conf) + "%</span>", unsafe_allow_html=True)
+        if sig == "買":
+            st.markdown("#### 建議買進區間：<span class='badge-buy'>" + str(res_data.get('buy_range')) + "</span>", unsafe_allow_html=True)
+        elif sig == "賣":
+            st.markdown("#### 建議賣出區間：<span class='badge-sell'>" + str(res_data.get('sell_range')) + "</span>", unsafe_allow_html=True)
         st.write(res_data.get("analysis_text", ""))
     else:
         st.info("ℹ️ 資料庫尚無今日預先分析，點擊下方按鈕啟動 AI 即時分析：")
-        if st.button(f"🤖 即時生成 {display_name} 深度 AI 分析"):
+        if st.button("🤖 即時生成 " + display_name + " 深度 AI 分析"):
             with st.spinner("AI 分析中..."):
                 r_str = df.tail(10).to_string() if not df.empty else "無資料"
                 rep, meta = run_gemini_analysis(display_name, selected_code, r_str)
-                st.markdown(f"### 信心指數：<span class='badge-confidence'>{meta.get('confidence', 96)}%</span>", unsafe_html=True)
+                st.markdown("### 信心指數：<span class='badge-confidence'>" + str(meta.get('confidence', 96)) + "%</span>", unsafe_allow_html=True)
                 st.write(rep)
-                with tab2:
+
+with tab2:
     st.subheader("🚀 每日完成整理準備起漲推薦股 (信心度 > 95%)")
     st.info("系統每日 17:30 自動掃描全市場，精選 10 檔型態完成、籌碼集中度高之股票。")
 
@@ -223,5 +226,5 @@ with tab3:
                     st.write("### AI 回覆：")
                     st.write(response.text)
                 except Exception as e:
-                    st.error(f"錯誤: {e}")
-
+                    st.error("錯誤: " + str(e))
+              
