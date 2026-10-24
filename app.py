@@ -59,7 +59,7 @@ def save_analysis_to_supabase(symbol, analysis_text):
         "buy_range": "85.0 ~ 87.0 元",
         "sell_range": "90.0 ~ 91.0 元",
         "analysis_text": analysis_text,
-        "updated_at": pd.Timestamp.now().isoformat()
+        "updated_at": datetime.utcnow.isoformat()
     }
     
     # Supabase upsert
