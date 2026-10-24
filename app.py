@@ -134,6 +134,7 @@ with tab1:
             today_analysis = supabase.table("daily_analysis").select("*").execute().data or []
         except Exception:
             pass
+            
     analysis_dict = {str(item["stock_id"]): item for item in today_analysis} if today_analysis else {}
 
     # 兩列按鈕排版邏輯 (每列最多 5 個)
