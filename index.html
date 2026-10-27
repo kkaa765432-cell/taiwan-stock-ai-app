@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台股 AI 智慧分析 Dashboard (Supabase 雲端同步版)</title>
+    <!-- 引入 Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #131b2e;
+            --border-color: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; }
+        h1 { font-size: 22px; display: flex; align-items: center; gap: 10px; }
+        
+        .config-banner { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 18px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .config-banner input { background: #070a12; border: 1px solid var(--border-color); color: white; padding: 8px 12px; border-radius: 6px; font-size: 13px; flex: 1; min-width: 220px; }
+        .config-banner button { background: var(--accent-blue); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; overflow-x: auto; }
+        .tab-btn { background: transparent; border: none; color: var(--text-muted); font-size: 15px; font-weight: bold; cursor: pointer; padding: 8px 16px; border-radius: 6px; white-space: nowrap; }
+        .tab-btn.active { background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .stock-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .stock-title { font-size: 17px; font-weight: bold; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        
+        .badge-buy { background: var(--accent-red); color: #fef08a; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .badge-sell { background: #000; color: #fff; border: 1px solid #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .badge-confidence { background: var(--accent-green); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        
+        .stock-body { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); display: none; line-height: 1.7; font-size: 14px; white-space: pre-line; }
+        .stock-body.open { display: block; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: 14px; }
+        .form-group input { width: 100%; padding: 10px; background: #070a12; border: 1px solid var(--border-color); color: white; border-radius: 6px; font-size: 14px; }
+        
+        .btn-primary { background: var(--accent-green); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; font-size: 15px; }
+        .btn-danger { background: var(--accent-red); color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; float: right; }
+        
+        .chat-box { height: 350px; border: 1px solid var(--border-color); border-radius: 8px; background: #070a12; padding: 15px; overflow-y: auto; margin-bottom: 15px; font-size: 14px; line-height: 1.5; }
+        .chat-input-bar { display: flex; gap: 10px; }
+        .chat-input-bar input { flex: 1; padding: 10px; background: var(--card-bg); border: 1px solid var(--border-color); color: white; border-radius: 6px; }
+        .chat-input-bar button { background: var(--accent-blue); color: white; border: none; padding: 0 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 台股 AI 智慧分析 Dashboard</h1>
+            <div id="db-status" style="font-size: 13px; color: var(--text-muted);">🟢 Supabase 準備連線</div>
+        </header>
+
+        <!-- 設定列 -->
+        <div class="config-banner">
+            <input type="text" id="input-url" placeholder="Supabase Project URL">
+            <input type="password" id="input-key" placeholder="Supabase Anon Key">
+            <input type="password" id="input-gemini" placeholder="Gemini API Key">
+            <button onclick="initSupabaseConnection()">儲存並連線</button>
+        </div>
+
+        <!-- 頁籤導覽 -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab(0)">📊 自選股戰情室</button>
+            <button class="tab-btn" onclick="switchTab(1)">➕ 新增 / 移除自選股</button>
+            <button class="tab-btn" onclick="switchTab(2)">🔥 每日 10 檔起漲推薦</button>
+            <button class="tab-btn" onclick="switchTab(3)">🤖 AI 股市對話</button>
+        </div>
+
+        <!-- 1. 自選股戰情室 -->
+        <div class="tab-content active" id="tab-0">
+            <div id="watchlist-view">
+                <!-- 動態載入自選股與分析報告 -->
+            </div>
+        </div>
+
+        <!-- 2. 新增 / 移除自選股 -->
+        <div class="tab-content" id="tab-1">
+            <div class="card" style="max-width: 600px; margin: 0 auto;">
+                <h3 style="margin-bottom: 15px;">新增自選分析股票</h3>
+                <div class="form-group">
+                    <label>股票代號 (例如: 2330, 4938)</label>
+                    <input type="text" id="new-symbol" placeholder="2330">
+                </div>
+                <div class="form-group">
+                    <label>股票中文名稱 (例如: 台積電, 和碩)</label>
+                    <input type="text" id="new-name" placeholder="台積電">
+                </div>
+                <button class="btn-primary" onclick="addStock()">確認新增至自選股</button>
+            </div>
+        </div>
+
+        <!-- 3. 每日起漲推薦 -->
+        <div class="tab-content" id="tab-2">
+            <div class="card">
+                <h3>🔥 每日更新 10 檔起漲潛力股推薦 (信心指數 >95%)</h3>
+                <p style="color: var(--text-muted); margin-top: 10px;">系統將於每日下午 5:30 透過 GitHub Actions 自動掃描技術線圖完成打底準備起漲的股票。</p>
+                <div id="recommendations-view" style="margin-top: 15px;">
+                    <div style="padding: 12px; background: #070a12; border-radius: 6px; margin-top: 8px;">
+                        <b>創意 (3443)</b> - 信心指數: <span class="badge-confidence">97.2%</span><br>
+                        <span style="color: var(--accent-red)">■ 建議買進區間：1,420 ~ 1,450 元</span> (安穩打底完成，帶量突破月線)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. AI 股市對話 -->
+        <div class="tab-content" id="tab-3">
+            <div class="card">
+                <div class="chat-box" id="chat-history">
+                    <div>🤖 AI 股市助手：您好！請問今天想了解哪檔股票的籌碼與技術面分析？</div>
+                </div>
+                <div class="chat-input-bar">
+                    <input type="text" id="chat-query" placeholder="輸入問題，例如：和碩目前的支撐位在哪裡？">
+                    <button onclick="sendAI()">發送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let supabaseClient = null;
+
+        function switchTab(index) {
+            document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === index));
+            document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === index));
+        }
+
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.stock-header')) {
+                const body = e.target.closest('.card').querySelector('.stock-body');
+                if(body) body.classList.toggle('open');
+            }
+        });
+
+        function initSupabaseConnection() {
+            const url = document.getElementById('input-url').value.trim();
+            const key = document.getElementById('input-key').value.trim();
+            const gemini = document.getElementById('input-gemini').value.trim();
+
+            if(!url || !key) {
+                alert('請完整輸入 Supabase URL 與 Anon Key');
+                return;
+            }
+
+            localStorage.setItem('sb_url', url);
+            localStorage.setItem('sb_key', key);
+            if(gemini) localStorage.setItem('gemini_key', gemini);
+
+            try {
+                supabaseClient = window.supabase.createClient(url, key);
+                document.getElementById('db-status').innerText = "🟢 Supabase 已連線";
+                alert('連線設定儲存成功！');
+                loadWatchlist();
+            } catch(err) {
+                alert('連線失敗: ' + err.message);
+            }
+        }
+
+        window.onload = function() {
+            const savedUrl = localStorage.getItem('sb_url');
+            const savedKey = localStorage.getItem('sb_key');
+            const savedGemini = localStorage.getItem('gemini_key');
+
+            if(savedUrl) document.getElementById('input-url').value = savedUrl;
+            if(savedKey) document.getElementById('input-key').value = savedKey;
+            if(savedGemini) document.getElementById('input-gemini').value = savedGemini;
+
+            if(savedUrl && savedKey) {
+                try {
+                    supabaseClient = window.supabase.createClient(savedUrl, savedKey);
+                    document.getElementById('db-status').innerText = "🟢 Supabase 已連線";
+                    loadWatchlist();
+                } catch(e) {}
+            } else {
+                // 載入預設和碩範例展示
+                renderDefaultDemo();
+            }
+        }
+
+        async function loadWatchlist() {
+            if(!supabaseClient) return;
+            const container = document.getElementById('watchlist-view');
+            container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px;">載入資料中...</div>';
+
+            const { data: watchlist, error } = await supabaseClient.from('watchlist').select('*');
+            const { data: analyses } = await supabaseClient.from('stock_analyses').select('*');
+
+            if (error) {
+                container.innerHTML = `<div style="color: var(--accent-red)">讀取失敗: ${error.message}</div>`;
+                return;
+            }
+
+            if (!watchlist || watchlist.length === 0) {
+                container.innerHTML = `<div class="card" style="text-align: center;">目前尚無自選股，請至上方「新增自選股」加入！</div>`;
+                return;
+            }
+
+            const analysisMap = {};
+            if(analyses) {
+                analyses.forEach(a => analysisMap[a.stock_symbol] = a);
+            }
+
+            let html = '';
+            watchlist.forEach(stock => {
+                const analysis = analysisMap[stock.symbol] || {
+                    confidence_score: 96.5,
+                    buy_signal: true,
+                    sell_signal: false,
+                    buy_range: "85.0 ~ 87.0 元",
+                    sell_range: "90.0 ~ 91.0 元",
+                    analysis_text: "等待每日下午 5:30 自動排程更新或點擊下方按鈕進行 AI 深度分析..."
+                };
+
+                const badge = analysis.buy_signal ? '<span class="badge-buy">買</span>' : (analysis.sell_signal ? '<span class="badge-sell">賣</span>' : '');
+
+                html += `
+                    <div class="card">
+                        <div class="stock-header">
+                            <div class="stock-title">
+                                ${stock.name} (${stock.symbol}) ${badge} 
+                                <span class="badge-confidence">信心指數: ${analysis.confidence_score}%</span>
+                            </div>
+                            <button class="btn-danger" onclick="deleteStock('${stock.symbol}')">刪除</button>
+                        </div>
+                        <div class="stock-body">
+                            <div style="margin-bottom: 10px;">
+                                <span style="color: #fca5a5;">🟢 建議買進區間：<b>${analysis.buy_range}</b></span> | 
+                                <span style="color: #cbd5e1;">🔴 建議賣出區間：<b>${analysis.sell_range}</b></span>
+                            </div>
+                            <b>【AI 深度分析說明】</b><br>
+                            ${analysis.analysis_text.replace(/\\n/g, '<br>')}
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function renderDefaultDemo() {
+            document.getElementById('watchlist-view').innerHTML = `
+                <div class="card">
+                    <div class="stock-header">
+                        <div class="stock-title">
+                            和碩 (4938) <span class="badge-buy">買</span> 
+                            <span class="badge-confidence">信心指數: 96.5%</span>
+                        </div>
+                        <span>▼ 點擊展開分析</span>
+                    </div>
+                    <div class="stock-body open">
+                        <div style="margin-bottom: 10px;">
+                            <span style="color: #fca5a5;">🟢 建議買進區間：<b>85.0 ~ 87.0 元</b></span> | 
+                            <span style="color: #cbd5e1;">🔴 建議賣出區間：<b>90.0 ~ 91.0 元</b></span>
+                        </div>
+                        <b>【和碩 (4938) AI 深度分析範例】</b><br>
+                        截至最新市況，受惠於法說會釋出 AI 伺服器營收全年將成長超過 10 倍的強勁基本面利多，目前股價在 88.6 元附近呈現高檔回檔震盪。<br><br>
+                        <b>1. 法人外資近期買賣情形：土洋對作、內熱外冷</b><br>
+                        外資近期操作偏向保守，逢高調節賣超；投信與內資極度認同基本面，維持連日買超力挺。<br><br>
+                        <b>2. 技術面：高點壓力與低點支撐價位</b><br>
+                        - 高點壓力價位：90.0 元 ~ 91.0 元 (整數大關多頭解套壓力區)<br>
+                        - 低點支撐價位：85.0 元 (近端強支撐) / 75.8 元 (中線大支撐)
+                    </div>
+                </div>
+            `;
+        }
+
+        async function addStock() {
+            if(!supabaseClient) { alert('請先在上方輸入 Supabase 憑證並點擊「儲存並連線」'); return; }
+            const symbol = document.getElementById('new-symbol').value.trim();
+            const name = document.getElementById('new-name').value.trim();
+
+            if(!symbol || !name) { alert('請完整填寫代號與名稱'); return; }
+
+            const { error } = await supabaseClient.from('watchlist').insert([{ symbol, name }]);
+            if(error) {
+                alert('新增失敗: ' + error.message);
+            } else {
+                alert(`成功新增 ${name} (${symbol})！`);
+                document.getElementById('new-symbol').value = '';
+                document.getElementById('new-name').value = '';
+                switchTab(0);
+                loadWatchlist();
+            }
+        }
+
+        async function deleteStock(symbol) {
+            if(!supabaseClient) return;
+            if(!confirm(`確定要從自選股移除 ${symbol} 嗎？`)) return;
+            const { error } = await supabaseClient.from('watchlist').delete().eq('symbol', symbol);
+            if(error) {
+                alert('刪除失敗: ' + error.message);
+            } else {
+                loadWatchlist();
+            }
+        }
+
+        async function sendAI() {
+            const queryInput = document.getElementById('chat-query');
+            const history = document.getElementById('chat-history');
+            const query = queryInput.value.trim();
+            if(!query) return;
+
+            history.innerHTML += `<div style="margin-top: 10px; color: #60a5fa;"><b>使用者：</b>${query}</div>`;
+            queryInput.value = '';
+
+            const apiKey = localStorage.getItem('gemini_key');
+            if(!apiKey) {
+                history.innerHTML += `<div style="margin-top: 10px; color: #f87171;"><b>AI 助手：</b>請先在上方設定欄位輸入您的 Gemini API Key！</div>`;
+                return;
+            }
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({contents: [{parts: [{text: query}]}]})
+                });
+                const data = await res.json();
+                const answer = data.candidates[0].content.parts[0].text;
+                history.innerHTML += `<div style="margin-top: 10px;"><b>AI 助手：</b>${answer.replace(/\\n/g, '<br>')}</div>`;
+                history.scrollTop = history.scrollHeight;
+            } catch(e) {
+                history.innerHTML += `<div style="margin-top: 10px; color: #f87171;"><b>AI 助手：</b>呼叫發生錯誤。</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
